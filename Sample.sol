@@ -3,18 +3,45 @@
 pragma solidity ^0.7.6;
 
 contract testContract {
+    
+    //basic struct for project info
+    struct Project{
+        string ID;
+        string description;
+    }
+        
+    //variables for other functions
+    address initiator;
+    uint256 public finishtime;
+    uint256 public GoalAmt;
+    uint public mindonation;
+    
+    
+    mapping(address => uint256) public AddresstoDonatedamt;
+    address[] public donors;
+    
+    mapping (uint => Project) public Projects;
+    uint[] public Projectlist;
+    
+    constructor Initialise() public {
+        Project.ID = "ID1"
+        Project.description = "ID1 crowdfunding description"
+ 
 
-    uint256 value;
-
-    constructor (uint256 _p) {
-        value = _p;
+    function CreateProject(uint256 days, uint256 goal) public {
+        initiator = msg.sender;
+        finishtime = now + days;
+        GoalAmt = goal;
     }
 
-    function setP(uint256 _n) payable public {
-        value = _n;
+    function donate() public payable {
+        require(now < finishtime)
+        require(msg.value > mindonation);
+        AddresstoDonatedamt[msg.sender] += msg.value;
+        donors.push(msg.sender);    
     }
 
-    function setNP(uint256 _n) public {
+    function TransferOut(uint256 _n) public {
         value = _n;
     }
 
