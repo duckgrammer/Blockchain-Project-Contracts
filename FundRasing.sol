@@ -1,49 +1,131 @@
 // SPDX-License-Identifier: GPL-3.0
 
-pragma solidity ^0.7.6;
+pragma solidity ^0.8.0;
 
 
 contract testContract {
-
     //basic struct for project info
     struct Project {
+        int id;
+        string name;
         string description;
-        address initiator;
+        address beneficiary;
         uint goalAmt;
-        uint finishtime;
+        uint endTime;
+        bool claimed; //intialized to false by default, set to true once transferOut function is called successfully
+
+        mapping(address => uint256) addToDonation;
+        address[] donors;
+    }
+
+    //struct used for data retrieval
+    struct publicData {
+        int id;
+        string name;
+        string description;
+        address beneficiary;
+        uint goalAmt;
+        uint256 currentAmt;
+        uint timeLeft; //in seconds, convert to d/h/m/s in frontend. Returns zero if time has already passed
         bool claimed;
     }
 
-    mapping(address => uint256) public AddresstoDonatedamt;
-    address[] public donors;
+    mapping(uint => Project) private projectList;
+    uint[] idList;
+    uint nextId; //also used for counting number of projects
 
-    Project project;
+    mapping(address => uint256) emptyMapping;
+    address[] emptyDonorsList;
 
-    constructor(address payable initiator, uint256 lastsFor, uint256 goal, string memory projectDescription) {
-        project.description = projectDescription;
-        project.initiator = initiator;
-        project.finishtime = block.timestamp + (lastsFor * 1 days);
-        project.goalAmt = goal;
+    constructor() {
+        nextId = 0;
     }
 
-    function donate() public payable {
-        require(block.timestamp < project.finishtime);
-        require(project.claimed == false, "This fundraising has already ended.");
+    function createNewProject(
+        string memory _name,
+        string memory _description,
+        address _beneficiary,
+        uint _goalAmt, //keep this in wei
+        uint _duration //in seconds
+    ) public {
+        idList.push(nextId);
 
-        AddresstoDonatedamt[msg.sender] += msg.value;
-        donors.push(msg.sender);
+        projectList[nextId].name = _name;
+        projectList[nextId].description = _description;
+        projectList[nextId].beneficiary = _beneficiary;
+        projectList[nextId].goalAmt = _goalAmt * 1000000000000000000; //convert to wei
+        projectList[nextId].endTime = block.timestamp + (_duration * 1 seconds);
+
+        nextId += 1;
     }
 
-    function TransferOut() public {
-        uint256 totalAmt = 0;
-        for (uint i = 0; i < donors.length; i++) {
-            address temp = donors[i];
-            require(AddresstoDonatedamt[temp] > 0);
-            totalAmt += AddresstoDonatedamt[temp];
+    function donate(uint _id) public payable {
+        require(block.timestamp < projectList[_id].endTime, "Fundraising must not have ended.");
+        require(projectList[_id].claimed == false, "Funds from fundraising must not have been claimed.");
+
+        projectList[_id].addToDonation[msg.sender] += msg.value; //msg.value is in wei
+        if (newDonor(_id, msg.sender)) {
+            projectList[_id].donors.push(msg.sender);
         }
-        payable(project.initiator).transfer(totalAmt);
+    }
+
+    //paysout beneficiary and resets all values of mapping to zero
+    function transferOut(uint _id) public {
+        require(msg.sender == projectList[_id].beneficiary, "Transfer out must only be done by beneficiary.");
+        require(canWithdraw(_id), "Either goal must be met or fundraising must have ended.");
+        projectList[_id].claimed = true;
+        payable(projectList[_id].beneficiary).transfer(getTotalAmount(_id, true));
+    }
+
+    function canWithdraw(uint _id) private  returns (bool) {
+        return (block.timestamp > projectList[_id].endTime) || (getTotalAmount(_id, false) >= projectList[_id].goalAmt);
+    }
+
+    function getTotalAmount(uint _id, bool toReset) private returns (uint256) {
+        uint256 totalAmt = 0;
+        for (uint i = 0; i < projectList[_id].donors.length; i++) {
+            address temp = projectList[_id].donors[i];
+            require(projectList[_id].addToDonation[temp] > 0);
+            totalAmt += projectList[_id].addToDonation[temp];
+
+            if (toReset) { //resets the mapping to zero during withdrawal only
+                projectList[_id].addToDonation[temp] = 0;
+            }
+        }
+        return totalAmt;
+    }
+
+    //returns a tuple for all details regarding a project
+    function getProjectDetails(uint _id) public returns (publicData memory) {
+        return publicData (
+        {
+        id: projectList[_id].id,
+        name: projectList[_id].name,
+        description: projectList[_id].description,
+        beneficiary: projectList[_id].beneficiary,
+        goalAmt: projectList[_id].goalAmt,
+        currentAmt: getTotalAmount(_id, false),
+        timeLeft: (projectList[_id].endTime - block.timestamp) > 0 ? (projectList[_id].endTime - block.timestamp) : 0,
+        claimed: projectList[_id].claimed
+        }
+        );
+    }
+
+    //use the return value as upper limit of a loop for getting details of all projects
+    function getLastUsedProjectId() public view returns (int) {
+        if (nextId == 0) {
+            return -1;
+        }
+        return int(nextId) - 1;
+    }
+
+    //checks if this is a new donor, so that a specific address can donate more than once to the same project
+    function newDonor(uint _id, address _donor) private view returns (bool) {
+        for (uint i = 0; i < projectList[_id].donors.length; i++) {
+            if (projectList[_id].donors[i] == _donor) {
+                return false;
+            }
+        }
+        return true;
     }
 }
-
-//todo timing
-//only the initiator can transferout
