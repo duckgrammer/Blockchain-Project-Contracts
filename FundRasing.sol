@@ -53,7 +53,7 @@ contract testContract {
         projectList[nextId].name = _name;
         projectList[nextId].description = _description;
         projectList[nextId].beneficiary = _beneficiary;
-        projectList[nextId].goalAmt = _goalAmt * 1000000000000000000; //convert to wei
+        projectList[nextId].goalAmt = _goalAmt; //convert to wei
         projectList[nextId].endTime = block.timestamp + (_duration * 1 seconds);
 
         nextId += 1;
@@ -74,29 +74,26 @@ contract testContract {
         require(msg.sender == projectList[_id].beneficiary, "Transfer out must only be done by beneficiary.");
         require(canWithdraw(_id), "Either goal must be met or fundraising must have ended.");
         projectList[_id].claimed = true;
-        payable(projectList[_id].beneficiary).transfer(getTotalAmount(_id, true));
+        payable(projectList[_id].beneficiary).transfer(getTotalAmount(_id));
     }
 
-    function canWithdraw(uint _id) private  returns (bool) {
-        return (block.timestamp > projectList[_id].endTime) || (getTotalAmount(_id, false) >= projectList[_id].goalAmt);
+    function canWithdraw(uint _id) private view returns (bool) {
+        return ((block.timestamp > projectList[_id].endTime) || (getTotalAmount(_id) >= projectList[_id].goalAmt)) && !projectList[_id].claimed;
     }
 
-    function getTotalAmount(uint _id, bool toReset) private returns (uint256) {
+    function getTotalAmount(uint _id) private view returns (uint256) {
         uint256 totalAmt = 0;
         for (uint i = 0; i < projectList[_id].donors.length; i++) {
             address temp = projectList[_id].donors[i];
             require(projectList[_id].addToDonation[temp] > 0);
             totalAmt += projectList[_id].addToDonation[temp];
-
-            if (toReset) { //resets the mapping to zero during withdrawal only
-                projectList[_id].addToDonation[temp] = 0;
-            }
         }
         return totalAmt;
     }
 
     //returns a tuple for all details regarding a project
-    function getProjectDetails(uint _id) public returns (publicData memory) {
+    function getProjectDetails(uint _id) public view returns (publicData memory) {
+        require(_id < nextId, "id queried must be an existing or expired project, cannot be out of index bounds");
         return publicData (
         {
         id: projectList[_id].id,
@@ -104,8 +101,8 @@ contract testContract {
         description: projectList[_id].description,
         beneficiary: projectList[_id].beneficiary,
         goalAmt: projectList[_id].goalAmt,
-        currentAmt: getTotalAmount(_id, false),
-        timeLeft: (projectList[_id].endTime - block.timestamp) > 0 ? (projectList[_id].endTime - block.timestamp) : 0,
+        currentAmt: getTotalAmount(_id),
+        timeLeft: (projectList[_id].endTime > block.timestamp) ? (projectList[_id].endTime - block.timestamp) : 0,
         claimed: projectList[_id].claimed
         }
         );
