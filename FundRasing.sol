@@ -53,7 +53,7 @@ contract testContract {
         projectList[nextId].name = _name;
         projectList[nextId].description = _description;
         projectList[nextId].beneficiary = _beneficiary;
-        projectList[nextId].goalAmt = _goalAmt; //convert to wei
+        projectList[nextId].goalAmt = _goalAmt * (10**18); //convert to wei
         projectList[nextId].endTime = block.timestamp + (_duration * 1 seconds);
 
         nextId += 1;
